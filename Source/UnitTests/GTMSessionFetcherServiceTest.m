@@ -71,12 +71,18 @@ static NSString *const kValidFileName = @"gettysburgaddress.txt";
 @implementation GTMSessionFetcherServiceTest
 
 - (NSString *)docRootPath {
+#if defined(SWIFTPM_MODULE_BUNDLE)
+  NSBundle *testBundle = SWIFTPM_MODULE_BUNDLE;
+  XCTAssertNotNil(testBundle);
+#else
   // Find a test file.
   NSBundle *testBundle = [NSBundle bundleForClass:[self class]];
   XCTAssertNotNil(testBundle);
+#endif  // SWIFTPM_MODULE_BUNDLE
 
   // Use the directory of the test file as the root directory for our server.
   NSString *docFolder = [testBundle resourcePath];
+  XCTAssertNotNil(docFolder);
   return docFolder;
 }
 

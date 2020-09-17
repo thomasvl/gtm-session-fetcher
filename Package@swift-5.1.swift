@@ -1,4 +1,4 @@
-// swift-tools-version:5.3
+// swift-tools-version:5.1
 // The swift-tools-version declares the minimum version of Swift required to build this package.
 import PackageDescription
 
@@ -26,18 +26,6 @@ let package = Package(
         .target(
             name: "GTMSessionFetcherCore",
             path: "Source",
-            exclude:[
-                "GTMSessionFetcherIOS",
-                "GTMSessionFetcherOSX",
-                "GTMSessionFetchertvOS",
-                "GTMSessionFetcherwatchOS",
-                "TestApps",
-                "UnitTests",
-                "GTMGatherInputStream.m",
-                "GTMMIMEDocument.m",
-                "GTMReadMonitorInputStream.m",
-                "GTMSessionFetcherLogViewController.m",
-            ],
             sources:[
                 "GTMSessionFetcher.h",
                 "GTMSessionFetcher.m",
@@ -54,19 +42,6 @@ let package = Package(
             name: "GTMSessionFetcherFull",
             dependencies: ["GTMSessionFetcherCore"],
             path: "Source",
-            exclude:[
-                "GTMSessionFetcherIOS",
-                "GTMSessionFetcherOSX",
-                "GTMSessionFetchertvOS",
-                "GTMSessionFetcherwatchOS",
-                "TestApps",
-                "UnitTests",
-                "GTMSessionFetcher.m",
-                "GTMSessionFetcherLogging.m",
-                "GTMSessionFetcherLogViewController.m",
-                "GTMSessionFetcherService.m",
-                "GTMSessionUploadFetcher.m",
-            ],
             sources: [
                 "GTMGatherInputStream.h",
                 "GTMGatherInputStream.m",
@@ -81,33 +56,11 @@ let package = Package(
             name: "GTMSessionFetcherLogView",
             dependencies: ["GTMSessionFetcherCore"],
             path: "Source",
-            exclude:[
-                "GTMSessionFetcherIOS",
-                "GTMSessionFetcherOSX",
-                "GTMSessionFetchertvOS",
-                "GTMSessionFetcherwatchOS",
-                "TestApps",
-                "UnitTests",
-                "GTMGatherInputStream.m",
-                "GTMMIMEDocument.m",
-                "GTMReadMonitorInputStream.m",
-                "GTMSessionFetcherService.m",
-                "GTMSessionFetcher.m",
-                "GTMSessionFetcherLogging.m",
-                "GTMSessionUploadFetcher.m",
-            ],
             sources: [
                 "GTMSessionFetcherLogViewController.h",
                 "GTMSessionFetcherLogViewController.m"
             ],
             publicHeadersPath: "SwiftPackage"
-        ),
-        .testTarget(
-            name: "GTMSessionFetcherCoreTests",
-            dependencies: ["GTMSessionFetcherFull", "GTMSessionFetcherCore"],
-            path: "Source/UnitTests",
-            exclude: ["SupportingFiles"],
-            resources: [.copy("Data/gettysburgaddress.txt")]
         )
     ]
 )
