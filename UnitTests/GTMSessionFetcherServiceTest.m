@@ -592,8 +592,10 @@ static bool IsCurrentProcessBeingDebugged(void) {
     }
   }
 
-  [self waitForExpectations:@[ fetcherCallbackExpectation, fetcherStartedExpectation__,
-                               fetcherStoppedExpectation__ ] timeout:10.0];
+  [self waitForExpectations:@[
+    fetcherCallbackExpectation, fetcherStartedExpectation__, fetcherStoppedExpectation__
+  ]
+                    timeout:10.0];
 
   XCTAssertEqual(service.runningFetchersByHost.count, (NSUInteger)0, @"hosts running");
   XCTAssertEqual(service.delayedFetchersByHost.count, (NSUInteger)0, @"hosts delayed");
@@ -1781,34 +1783,96 @@ static bool IsCurrentProcessBeingDebugged(void) {
   XCTAssertNotNil(collectedMetrics);
 }
 
+- (void)testFetcherUsesStopFetchingWithDelayTriggersCompletionHandlerFromFetcherService {
+  // sessionReuse doesn't matter with only one URL.
+  [self helperForStopFetchers:1 stopDelaySeconds:1 reuseSession:NO];
+}
+
 - (void)testFetcherUsesStopFetchingTriggersCompletionHandlerFromFetcherService {
+  // sessionReuse doesn't matter with only one URL.
+  [self helperForStopFetchers:1 stopDelaySeconds:0 reuseSession:NO];
+}
+
+- (void)
+    testFetcherUsesStopFetchingWithDelayTriggersCompletionHandlerFromFetcherServiceSessionReuse {
+  NSURL *fetchURL = [_testServer localURLForFile:kValidFileName];
+  NSArray *urls = @[ fetchURL, fetchURL, fetchURL, fetchURL ];
+  [self helperForStopFetchers:1 stopDelaySeconds:1 reuseSession:YES];
+}
+
+- (void)testFetcherUsesStopFetchingTriggersCompletionHandlerFromFetcherServiceNoSessionReuse {
+  [self helperForStopFetchers:20 stopDelaySeconds:0 reuseSession:NO];
+}
+
+- (void)
+    testFetcherUsesStopFetchingWithDelayTriggersCompletionHandlerFromFetcherServiceNoSessionReuse {
+  NSURL *fetchURL = [_testServer localURLForFile:kValidFileName];
+  NSArray *urls = @[ fetchURL, fetchURL, fetchURL, fetchURL ];
+  [self helperForStopFetchers:20 stopDelaySeconds:1 reuseSession:NO];
+}
+
+- (void)testFetcherUsesStopFetchingTriggersCompletionHandlerFromFetcherServiceSessionReuse {
+  [self helperForStopFetchers:20 stopDelaySeconds:0 reuseSession:YES];
+}
+
+- (void)helperForStopFetchers:(NSUInteger)numberOfFetches
+             stopDelaySeconds:(unsigned int)sleepTime
+                 reuseSession:(BOOL)reuseSession {
+  XCTAssertTrue(numberOfFetches > 0);
+
   if (!_isServerRunning) return;
 
-  // GIVEN
   GTMSessionFetcherService *service = [[GTMSessionFetcherService alloc] init];
   service.allowLocalhostRequest = YES;
   service.stopFetchingTriggersCompletionHandler = YES;
+  service.reuseSession = reuseSession;
 
   NSURL *fetchURL = [_testServer localURLForFile:kValidFileName];
-  GTMSessionFetcher *fetcher = [service fetcherWithURL:fetchURL];
+  NSData *gettysburgAddress = [_testServer documentDataAtPath:kValidFileName];
 
-  // EXPECT
-  XCTestExpectation *expectation =
-      [self expectationWithDescription:(id _Nonnull)fetchURL.absoluteString];
-  __block NSError *fetchError = nil;
-  [fetcher beginFetchWithCompletionHandler:^(NSData *fetchData, NSError *_fetchError) {
-    fetchError = _fetchError;
-    [expectation fulfill];
-  }];
+  XCTestExpectation *expectation = [self expectationWithDescription:@"Completion expection"];
+  expectation.expectedFulfillmentCount = numberOfFetches;
+  __block NSUInteger numSuccess = 0;
+  __block NSUInteger numFailure = 0;
 
-  // WHEN
-  [fetcher stopFetching];
+  NSMutableArray<GTMSessionFetcher *> *fetchers = [NSMutableArray array];
+  for (NSUInteger i = numberOfFetches; i; --i) {
+    GTMSessionFetcher *fetcher = [service fetcherWithURL:fetchURL];
+    [fetchers addObject:fetcher];
+
+    [fetcher beginFetchWithCompletionHandler:^(NSData *fetchData, NSError *fetchError) {
+      if (fetchData) {
+        XCTAssertEqualObjects(fetchData, gettysburgAddress);
+        XCTAssertNil(fetchError);
+        ++numSuccess;
+      }
+      if (fetchError) {
+        XCTAssertEqual(fetchError.domain, kGTMSessionFetcherErrorDomain);
+        XCTAssertEqual(fetchError.code, GTMSessionFetcherErrorUserCancelled);
+        XCTAssertNil(fetchData);
+        ++numFailure;
+      }
+      [expectation fulfill];
+    }];
+  }
+  XCTAssertEqual(fetchers.count, numberOfFetches);
+
+  if (sleepTime) {
+    sleep(sleepTime);
+  }
+
+  // If there is >1 fetcher, let one finish, but stop all the rest.
+  NSArray<GTMSessionFetcher *> *fetcherToStop =
+      numberOfFetches > 2 ? [fetchers subarrayWithRange:NSMakeRange(2, numberOfFetches - 2)]
+                          : fetchers;
+  fetchers = nil;
+  for (GTMSessionFetcher *fetcher in fetcherToStop) {
+    [fetcher stopFetching];
+  }
+  fetcherToStop = nil;
   [self waitForExpectationsWithTimeout:_timeoutInterval handler:nil];
 
-  // THEN
-  XCTAssertNotNil(fetchError);
-  XCTAssertEqual(fetchError.domain, kGTMSessionFetcherErrorDomain);
-  XCTAssertEqual(fetchError.code, GTMSessionFetcherErrorUserCancelled);
+  XCTAssertEqual(numSuccess + numFailure, numberOfFetches);
 }
 
 @end

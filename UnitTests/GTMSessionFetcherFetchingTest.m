@@ -1570,7 +1570,15 @@ NSString *const kGTMGettysburgFileName = @"gettysburgaddress.txt";
 #endif
 }
 
-- (void)testCancelFetchWithCallback {
+- (void)testDelayedCancelFetchWithCallback {
+  [self internalCancelFetchWithCallback:1];
+}
+
+- (void)testImmediateCancelFetchWithCallback {
+  [self internalCancelFetchWithCallback:0];
+}
+
+- (void)internalCancelFetchWithCallback:(unsigned int)sleepTime {
   if (!_isServerRunning) return;
 
   CREATE_START_STOP_NOTIFICATION_EXPECTATIONS(1, 1);
@@ -1591,7 +1599,9 @@ NSString *const kGTMGettysburgFileName = @"gettysburgaddress.txt";
     [expectation fulfill];
   }];
 
-  sleep(1);
+  if (sleepTime) {
+    sleep(sleepTime);
+  }
   [fetcher stopFetching];
 
   WAIT_FOR_START_STOP_NOTIFICATION_EXPECTATIONS();
