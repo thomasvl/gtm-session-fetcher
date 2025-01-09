@@ -1594,26 +1594,17 @@ NSData *_Nullable GTMDataFromInputStream(NSInputStream *inputStream, NSError **o
     if (_sessionUserInfo == nil) {
       // We'll return the metadata dictionary with internal keys removed. This avoids the user
       // re-using the userInfo dictionary later and accidentally including the internal keys.
+      // Just incase something got corrupted in storage and parsed back out differently, ensure
+      // the api contract on types is still valid.
       NSMutableDictionary *metadata = [[self sessionIdentifierMetadataUnsynchronized] mutableCopy];
       NSSet *keysToRemove = [metadata keysOfEntriesPassingTest:^BOOL(id key, id obj, BOOL *stop) {
-        return [key hasPrefix:@"_"];
+        return ![key isKindOfClass:[NSString class]] || ![obj isKindOfClass:[NSString class]] ||
+               [key hasPrefix:@"_"];
       }];
       [metadata removeObjectsForKeys:[keysToRemove allObjects]];
+
       if (metadata.count > 0) {
         _sessionUserInfo = metadata;
-
-#if DEBUG
-        [metadata enumerateKeysAndObjectsUsingBlock:^(id _Nonnull key, id _Nonnull obj,
-                                                      BOOL *_Nonnull stop) {
-          GTMSESSION_ASSERT_DEBUG([key isKindOfClass:[NSString class]],
-                                  @"sessionUserInfo keys must be NSStrings: %@", key);
-          if (![obj isKindOfClass:[NSString class]]) {
-            GTMSESSION_LOG_DEBUG(@"WARNING: sessionUserInfo included a non String value, this will "
-                                 @"be an error in the future: %@: %@",
-                                 key, obj);
-          }
-        }];
-#endif  // DEBUG
       }
     }
     return _sessionUserInfo;
@@ -1621,29 +1612,30 @@ NSData *_Nullable GTMDataFromInputStream(NSInputStream *inputStream, NSError **o
 }
 
 - (void)setSessionUserInfo:(nullable NSDictionary<NSString *, NSString *> *)dictionary {
+  [dictionary enumerateKeysAndObjectsUsingBlock:^(id _Nonnull key, id _Nonnull obj,
+                                                  BOOL *_Nonnull stop) {
+    if (![key isKindOfClass:[NSString class]]) {
+      [NSException raise:NSInvalidArgumentException
+                  format:@"sessionUserInfo keys must be NSStrings: %@", key];
+    }
+    if ([key hasPrefix:@"_"]) {
+      [NSException
+           raise:NSInvalidArgumentException
+          format:
+              @"sessionUserInfo keys starting with an underscore are reserved for the library: %@",
+              key];
+    }
+    if (![obj isKindOfClass:[NSString class]]) {
+      [NSException raise:NSInvalidArgumentException
+                  format:@"Values in sessionUserInfo must be NSStrings: %@: %@", key, obj];
+    }
+  }];
+
   @synchronized(self) {
     GTMSessionMonitorSynchronized(self);
 
     GTMSESSION_ASSERT_DEBUG(_sessionIdentifier == nil, @"Too late to assign userInfo");
     _sessionUserInfo = dictionary;
-
-#if DEBUG
-    [dictionary enumerateKeysAndObjectsUsingBlock:^(id _Nonnull key, id _Nonnull obj,
-                                                    BOOL *_Nonnull stop) {
-      GTMSESSION_ASSERT_DEBUG([key isKindOfClass:[NSString class]],
-                              @"sessionUserInfo keys must be NSStrings: %@", key);
-      if ([key hasPrefix:@"_"]) {
-        GTMSESSION_LOG_DEBUG(@"WARNING: sessionUserInfo keys starting with an underscore are "
-                             @"reserved for the library, this will become an error in the future: "
-                             @"%@: %@", key, obj);
-      }
-      if (![obj isKindOfClass:[NSString class]]) {
-        GTMSESSION_LOG_DEBUG(@"WARNING: sessionUserInfo included a non String value, this will be "
-                             @"an error in the future: %@: %@",
-                             key, obj);
-      }
-    }];
-#endif  // DEBUG
   }  // @synchronized(self)
 }
 
@@ -1734,34 +1726,22 @@ NSData *_Nullable GTMDataFromInputStream(NSInputStream *inputStream, NSError **o
     _sessionIdentifier =
         [NSString stringWithFormat:@"%@_%@", kGTMSessionIdentifierPrefix, _sessionIdentifierUUID];
 
-#if DEBUG
-    // _sessionUserInfo was declared as `strong` (not `copy`, so it could have been modifed after
-    // having been set.
-    [_sessionUserInfo enumerateKeysAndObjectsUsingBlock:^(id _Nonnull key, id _Nonnull obj,
-                                                          BOOL *_Nonnull stop) {
-      GTMSESSION_ASSERT_DEBUG([key isKindOfClass:[NSString class]],
-                              @"sessionUserInfo keys must be NSStrings: %@", key);
-      if ([key hasPrefix:@"_"]) {
-        GTMSESSION_LOG_DEBUG(@"WARNING: sessionUserInfo keys starting with an underscore are "
-                             @"reserved for the library, this will become an error in the future: "
-                             @"%@: %@", key, obj);
-      }
-      if (![obj isKindOfClass:[NSString class]]) {
-        GTMSESSION_LOG_DEBUG(@"WARNING: sessionUserInfo included a non String value, this will "
-                             @"be an error in the future: %@: %@",
-                             key, obj);
-      }
-    }];
-#endif  // DEBUG
-
     // Start with user-supplied keys so they cannot accidentally override the fetcher's keys.
     NSMutableDictionary *metadataDict =
         [NSMutableDictionary dictionaryWithDictionary:(NSDictionary *_Nonnull)_sessionUserInfo];
 
+    // sessionUserInfo was declared as `strong` (not `copy`), so it could have been modifed after
+    // having been set. So remove anything that breaks the contract.
+    NSSet *keysToRemove = [metadataDict keysOfEntriesPassingTest:^BOOL(id key, id obj, BOOL *stop) {
+      return ![key isKindOfClass:[NSString class]] || ![obj isKindOfClass:[NSString class]] ||
+             [key hasPrefix:@"_"];
+    }];
+    [metadataDict removeObjectsForKeys:[keysToRemove allObjects]];
+
     if (metadataToInclude) {
 #if DEBUG
-      [metadataToInclude enumerateKeysAndObjectsUsingBlock:^(id  _Nonnull key, id  _Nonnull obj,
-                                                             BOOL * _Nonnull stop) {
+      [metadataToInclude enumerateKeysAndObjectsUsingBlock:^(id _Nonnull key, id _Nonnull obj,
+                                                             BOOL *_Nonnull stop) {
         GTMSESSION_ASSERT_DEBUG([key isKindOfClass:[NSString class]],
                                 @"metadataToInclude keys must be NSStrings: %@", key);
         GTMSESSION_ASSERT_DEBUG([key hasPrefix:@"_"],
